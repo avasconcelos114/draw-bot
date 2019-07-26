@@ -12,6 +12,12 @@ getUsersFromChannel = async (channelId) => {
     return data
 }
 
+// Get users by ids (needed because above API doesn't return usernames)
+getUsersByIds = async (ids) => {
+    const data = await doPost(`${mattermostUrl}/api/v4/users/ids`, ids)
+    return data
+}
+
 // Post message to mattermost
 sendPostToChannel = async (payload) => {
     const data = await doPost(`${mattermostUrl}/api/v4/posts`, payload)
@@ -66,6 +72,7 @@ doPost = async (url, data) => {
 
 module.exports = {
     getUsersFromChannel,
+    getUsersByIds,
     sendPostToChannel,
     getUser,
 }
