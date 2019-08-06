@@ -54,11 +54,10 @@ getDrawById = async (drawId) => {
 // Add all to selected
 selectAllAvailable = async (drawId) => {
     const draw = await DrawModel.findById(drawId)
-    const newSelected = Object.assign([], draw.totalUsers)
+    const selectedUsers = Object.assign([], draw.totalUsers)
     const data = await draw.updateOne({
-        selectedUsers: newSelected
+        selectedUsers
     })
-
     return data
 }
 
@@ -68,38 +67,52 @@ unselectAllUsers = async (drawId) => {
     const data = await draw.updateOne({
         selectedUsers: []
     })
-
     return data
 }
 
 // Adds a specific user to a draw
 selectUser = async (userId, drawId) => {
     const draw = await getDrawById(drawId)
-    const selected = draw.selectedUsers
+    const selectedUsers = draw.selectedUsers
 
     // checks if user isn't already saved in selectedUsers somehow
-    if (selected.indexOf(userId) === -1) {
-        selected.push(userId)
-        const data = await draw.updateOne({
-            selectedUsers: selected
-        })
-
+    if (selectedUsers.indexOf(userId) === -1) {
+        selectedUsers.push(userId)
+        const data = await draw.updateOne({selectedUsers})
         return data
     }
     return null
 }
 
-// Get triggerer of draw
+// Removes a specific user from a draw
+removeUser = async (userId, drawId) => {
+    const draw = await getDrawById(drawId)
+    const selectedUsers = Object.assign([], draw.selectedUsers)
+    
+    if (selectedUsers.length > 0) {
+        const index = selectedUsers.indexOf(userId);
+        selectedUsers.splice(index, 1);
+        const data = await draw.updateOne({ selectedUsers })
+        return data
+    }
 
-// Get how many times each user was picked (timeline) 
+    return null
+}
 
-// Get top list of users that initiated drawing
+// save draw results
+saveDrawedUsers = async (drawId, drawedUsers) => {
+    const draw = await DrawModel.findById(drawId)
+    const data = await draw.updateOne({drawedUsers})
+    return data
+}
 
 module.exports = {
     createDraw,
     getDraws,
     getDrawById,
     selectAllAvailable,
+    saveDrawedUsers,
+    removeUser,
     unselectAllUsers,
     selectUser,
     checkConnection,

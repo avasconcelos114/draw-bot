@@ -13,7 +13,7 @@ checkEnvVar = (variable) => {
 const chatbotUrl = checkEnvVar(CHATBOT_SERVER)
 
 // receives draw data, and full data of totalUsers and generates an ephemeral payload for Mattermost
-generatePayload = (drawData, users) => {
+generateBasePayload = (drawData, users) => {
     // Get list of users not yet picked
     const availableUsers = getAvailableUsers(drawData.totalUsers, drawData.selectedUsers);
 
@@ -48,7 +48,7 @@ generatePayload = (drawData, users) => {
         {
             name: 'Draw!',
             integration: {
-                url: `${chatbotUrl}/draw`,
+                url: `${chatbotUrl}/get_number`,
                 context: {
                     drawId: drawData._id
                 }
@@ -56,8 +56,8 @@ generatePayload = (drawData, users) => {
         }
     ]
 
-    const availableUserOptions = generateAvailableUserOptions(availableUsersData)
-    if (availableUserOptions.length > 0) {
+    const selectUserDrowndown = generateUserOptions(availableUsersData)
+    if (selectUserDrowndown.length > 0) {
         actions.push({
             name: 'Add a user...',
             integration: {
@@ -67,7 +67,22 @@ generatePayload = (drawData, users) => {
                 }
             },
             type: 'select',
-            options: availableUserOptions
+            options: selectUserDrowndown
+        }) 
+    }
+
+    const removeUserDrowndown = generateUserOptions(selectedUsersData)
+    if (removeUserDrowndown.length > 0) {
+        actions.push({
+            name: 'Remove a user...',
+            integration: {
+                url: `${chatbotUrl}/remove_user`,
+                context: {
+                    drawId: drawData._id,
+                }
+            },
+            type: 'select',
+            options: removeUserDrowndown
         }) 
     }
 
@@ -96,6 +111,117 @@ generatePayload = (drawData, users) => {
     return payload;
 }
 
+// receives a draw data and generates payload to pick number of users to be drawn
+// note: max draw number is based on (selectedUsers.length - 1)
+generateDrawNumberPayload = (drawData) => {
+    let payload;
+    if (drawData.selectedUsers.length <= 1) {
+        payload = {
+            ephemeral_text: 'You need to select at least 2 users to be able to draw!'
+        }
+        return payload
+    }
+
+    const maxDrawNumber = drawData.selectedUsers.length - 1
+    const options = []
+    for (i = 1; i <= maxDrawNumber; i++) {
+        // Mattermost requires options to be given in string values
+        options.push({
+            text: i.toString(), 
+            value: i.toString(),
+        })
+    }
+
+    payload = {
+        props: {
+            attachments: [
+                {
+                    text: 'Select number of users to draw!',
+                    actions: [
+                        {
+                            name: 'Select number of users...',
+                            integration: {
+                                url: `${chatbotUrl}/draw`,
+                                context: {
+                                    drawId: drawData._id,
+                                }
+                            },
+                            type: 'select',
+                            options: options
+                        },
+                        {
+                            name: 'Cancel',
+                            integration: {
+                                url: `${chatbotUrl}/base_draw`,
+                                context: {
+                                    drawId: drawData._id,
+                                }
+                            }
+                        },
+                    ]
+                }
+            ]
+        }
+    }
+
+    return payload
+}
+
+generateDrawPayload = (drawId, drawedUsers, users) => {
+    const drawedUsersData = getFullData(drawedUsers, users)
+    const drawedUsersList = generateBulletList(drawedUsersData)
+
+    const payload = {
+        props: {
+            attachments: [
+                {
+                    text: ':confetti_ball:  Congratulations to the winners! :tada:',
+                    actions: [
+                        {
+                            name: 'Retry Draw',
+                            integration: {
+                                url: `${chatbotUrl}/base_draw`,
+                                context: {
+                                    drawId,
+                                }
+                            }
+                        }
+                    ],
+                    fields: [
+                        {
+                            short: false,
+                            title: '',
+                            value: drawedUsersList
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    return payload
+}
+
+// draws users randomly and return an array with the ids of users who have been picked
+drawUsersFromNumber = (selectedUsers, numberOfDraws) => {
+    const drawnUsers = []
+    let drawCount = 0
+    
+    while(drawCount !== numberOfDraws) {
+        const user = drawUser(drawnUsers, selectedUsers)
+        drawnUsers.push(user)
+        drawCount++
+    }
+
+    return drawnUsers
+}
+
+// returns the id of a user who has not been picked yet
+drawUser = (drawnUsers, selectedUsers) => {
+    const usersToDraw = selectedUsers.filter(user => !drawnUsers.includes(user));
+    const user = usersToDraw[Math.floor(Math.random() * usersToDraw.length)];
+    return user
+}
+
 // get users available for selection (totalUsers - selectedUsers)
 // Both arrays entered here are of type string[]
 getAvailableUsers = (totalUsers, selectedUsers) => {
@@ -116,7 +242,7 @@ generateBulletList = (users) => {
 }
 
 // Generates options for available users to be selected in dropdown menu
-generateAvailableUserOptions = (users) => {
+generateUserOptions = (users) => {
     let options = []
     users.forEach(user => {
         options.push({
@@ -145,5 +271,8 @@ module.exports = {
     checkEnvVar,
     generateTimestamp,
     getAvailableUsers,
-    generatePayload,
+    generateBasePayload,
+    generateDrawNumberPayload,
+    generateDrawPayload,
+    drawUsersFromNumber,
 }

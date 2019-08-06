@@ -36,48 +36,113 @@ app.get('/draw', async (req, res) => {
  ***********************/
 
 //  General function that prepares updated list of users
-getUpdatedDraw = async (drawId) => {
+getCurrentDrawStatus = async (drawId) => {
     const draw = await store.getDrawById(drawId)
 
     const users = await api.getUsersByIds(draw.totalUsers)
+    const triggererData = await api.getUser(draw.triggerer)
 
-    const options = utils.generatePayload(draw, users)
+    const options = utils.generateBasePayload(draw, users)
     const response = {
-        update: options
+        update: {
+            message: `A new draw has been started by @${triggererData.username}`,
+            ...options
+        }
     }
     return response
+}
+
+// checks if the person interacting with draw is the person who triggered it
+// TODO: perform additional check as to whether user is a sysadmin
+checkIfTriggerer = async (drawId, userId, handleRejected) => {
+    const draw = await store.getDrawById(drawId)
+    if (draw.triggerer !== userId) {
+        handleRejected()
+    }
+    return
 }
 
 // initial point triggered by slash command
 app.get('/initialize', async (req, res) => {
     const reqData = req.query
-    const triggerer = req.query.user_id
-    logger.debug(`received a new draw request from user_id=${triggerer}`)
+    const reqOption = reqData.text 
+    switch(reqOption) {
+        case 'stats':
+            const data = await store.getDraws()
+            await api.sendPostToChannel({
+                channel_id: reqData.channel_id,
+                message: `There have been ${data.length} draws so far! :tada:`,
+            })
+            res.send({})
+            return
+        case 'help':
+            res.send({
+                username: 'Draw bot',
+                response_type: 'ephemeral',
+                text: 'Run `/draw` to initiate a lottery draw!\n\nYou can also run `/draw stats` to view some basic statistics on this bot\'s usage'
+            })
+            return
+        // If command not recognized, initiate draw sequence
+        default:
+            const triggerer = req.query.user_id
 
-    const membersData = await api.getUsersFromChannel(reqData.channel_id)
-    const totalUsers = []
-    // storing user_id values in a string array to spare mongoDB's store capacity
-    membersData.forEach(member => {
-        totalUsers.push(member.user_id)
-    })
- 
-    const draw = await store.createDraw({ totalUsers, triggerer })
-    const users = await api.getUsersByIds(draw.totalUsers)
+            // Getting total users that can be drawn (need to filter deactivated accounts based on delete_at date)
+            // Note: "member" means the members of a channel while "users" is loosely used as Mattermost users
+            const membersData = await api.getUsersFromChannel(reqData.channel_id)
+            const memberIds = []
+            membersData.forEach(member => {
+                memberIds.push(member.user_id)
+            })
 
-    logger.debug('preparing a new post to send to Mattermost')
-    const options = utils.generatePayload(draw, users)
-    await api.sendPostToChannel({
-        channel_id: reqData.channel_id,
-        ...options
-    })
-    res.send({})
+            const users = await api.getUsersByIds(memberIds)
+            const totalUsers = []
+            users.forEach(user => {
+                if (!user.delete_at) {
+                    totalUsers.push(user.id);
+                }
+            });
+
+            const triggererData = await api.getUser(triggerer)
+
+            // refuse to run drawbot for people in single-person channels
+            if (membersData.length <= 1) {
+                await api.sendPostToChannel({
+                    channel_id: reqData.channel_id,
+                    message: 'You can only use the draw bot in channels with at least 2 users!'
+                })
+                res.send({})
+                return
+            }
+
+            const draw = await store.createDraw({ totalUsers, triggerer })
+
+            const options = utils.generateBasePayload(draw, users)
+            await api.sendPostToChannel({
+                channel_id: reqData.channel_id,
+                message: `A new draw has been started by @${triggererData.username}`,
+                ...options
+            })
+            res.send({})  
+            return
+    }
 })
 
 // Add a single user to selected list 
 app.post('/add_user', async (req, res) => {
-    const {drawId, selected_option} = req.body.context
+    const { context: { drawId, selected_option }, user_id } = req.body
+    await checkIfTriggerer(drawId, user_id, () => res.send({ ephemeral_text: 'You do not have permissions to decide who gets drawed this time!' }))
     await store.selectUser(selected_option, drawId)
-    const response = await getUpdatedDraw(drawId)
+    const response = await getCurrentDrawStatus(drawId)
+
+    res.send(response)
+})
+
+// Remove a single user to selected list 
+app.post('/remove_user', async (req, res) => {
+    const { context: { drawId, selected_option }, user_id } = req.body
+    await checkIfTriggerer(drawId, user_id, () => res.send({ ephemeral_text: 'You do not have permissions to decide who gets drawed this time!' }))
+    await store.removeUser(selected_option, drawId)
+    const response = await getCurrentDrawStatus(drawId)
 
     res.send(response)
 })
@@ -85,9 +150,10 @@ app.post('/add_user', async (req, res) => {
 // Add all members to list
 app.post('/add_all', async (req, res) => {
     logger.debug('/add_all called')
-    let { context: { drawId } } = req.body
+    let { context: { drawId }, user_id } = req.body
+    await checkIfTriggerer(drawId, user_id, () => res.send({ ephemeral_text: 'You do not have permissions to decide who gets drawed this time!' }))
     await store.selectAllAvailable(drawId)
-    const response = await getUpdatedDraw(drawId)
+    const response = await getCurrentDrawStatus(drawId)
     
     res.send(response)
 })
@@ -95,16 +161,66 @@ app.post('/add_all', async (req, res) => {
 // Empty member list
 app.post('/remove_all', async (req, res) => {
     logger.debug('/remove_all called')
-    const { context: { drawId } } = req.body
+    const { context: { drawId }, user_id } = req.body
+    await checkIfTriggerer(drawId, user_id, () => res.send({ ephemeral_text: 'You do not have permissions to decide who gets drawed this time!' }))
     await store.unselectAllUsers(drawId)
-    const response = await getUpdatedDraw(drawId)
+    const response = await getCurrentDrawStatus(drawId)
 
     res.send(response)
 })
 
-// draw random user from list (id)
+// select number of users to be drawn from
+app.post('/get_number', async (req, res) => {
+    const { context: { drawId }, user_id } = req.body
+    const draw = await store.getDrawById(drawId)
+    await checkIfTriggerer(drawId, user_id, () => res.send({ephemeral_text: 'You do not have permissions to decide who gets drawed this time!'}))
+
+    const triggererData = await api.getUser(draw.triggerer)
+
+    const payload = utils.generateDrawNumberPayload(draw)
+    let response = payload
+    if (!payload.ephemeral_text) {
+        response = {
+            update: {
+                message: `A new draw has been started by @${triggererData.username}`,
+                ...payload
+            }
+        }
+    }
+
+    res.send(response)
+})
+
 app.post('/draw', async (req, res) => {
-    console.log(req.body)
+    logger.debug('/draw called')
+    const { context: { drawId, selected_option }, user_id } = req.body
+    await checkIfTriggerer(drawId, user_id, () => res.send({ ephemeral_text: 'You do not have permissions to decide who gets drawed this time!' }))
+    const draw = await store.getDrawById(drawId)
+    
+    // Perform draw and save to store
+    const drawedUsers = utils.drawUsersFromNumber(draw.selectedUsers, parseInt(selected_option))
+    await store.saveDrawedUsers(drawId, drawedUsers)
+
+    // Prepare response to be sent to Mattermost
+    const users = await api.getUsersByIds(draw.totalUsers)
+    const payload = utils.generateDrawPayload(drawId, drawedUsers, users)
+    const triggererData = await api.getUser(draw.triggerer)
+
+    const response = {
+        update: {
+            message: `A new draw has been started by @${triggererData.username}`,
+            ...payload
+        }
+    }
+    res.send(response)
+})
+
+// Should just return the current status of a given draw (with base payload)
+app.post('/base_draw', async (req, res) => {
+    const { context: { drawId }, user_id } = req.body
+    await checkIfTriggerer(drawId, user_id, () => res.send({ ephemeral_text: 'You do not have permissions to decide who gets drawed this time!' }))
+    const response = await getCurrentDrawStatus(drawId)
+    res.send(response)
 })
 
 app.listen(port, () => logger.debug(`bot listening on port ${port}!`))
