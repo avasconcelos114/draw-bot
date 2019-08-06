@@ -2,7 +2,7 @@ const path = require('path');
 
 module.exports = {
     apps: [{
-        name: 'mind_archive_server',
+        name: 'drawbot',
         script: 'index.js',
         instances: 1,
         autorestart: true,
