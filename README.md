@@ -4,7 +4,7 @@ Draw bot is a lottery system built for Mattermost that enables users to randomly
 ![](readme_assets/drawbot.png)
 
 Things to note:
-* This bot is not recommended for us in channels that are larger than 30+ people. There is no hard limit set and the bot WILL print every user in the channel as a list, you've been warned!
+* This bot is not recommended for use in channels that are larger than 30+ people. There is no hard limit set and the bot WILL print every user in the channel as a list, you've been warned!
 * A MongoDB instance is required for this in order to persist data, and allow users to re-run past draws. The bot is currently just using the default `admin` table provided by MongoDB, but further configuration to use a different table has been planned
 
 ## Running on Docker
@@ -20,7 +20,7 @@ docker run -d -p 27017:27017 -e MONGO_INITDB_ROOT_USERNAME="root" -e MONGO_INITD
 
 2. [Create a Bot Account](https://docs.mattermost.com/developer/bot-accounts.html#user-interface-ui), or [issue a Personal Access Token](https://docs.mattermost.com/developer/personal-access-tokens.html#creating-a-personal-access-token) from Mattermost
 
-3. Run Drawbot container
+3. Run Drawbot container  
 Ensure you have the following environment variables set when running the container:
 
 | Variable name | Example value | Explanations / Notes |
