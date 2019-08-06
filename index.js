@@ -15,52 +15,17 @@ app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ 'extended': 'true' }))
 
 /************************
- * General Stats API
+ * General Stats API (more to be added)
  ***********************/
 app.get('/connection', (req, res) => {
     const connection = store.checkConnection()
     res.send({connection})
 })
 
-app.get('/draw', async (req, res) => {
-    const data = await store.getDraws()
-    const response = {
-        count: data.length,
-        draws: data
-    }
-    res.send(response)
-})
 
 /************************
  * Draw Functionality API
  ***********************/
-
-//  General function that prepares updated list of users
-getCurrentDrawStatus = async (drawId) => {
-    const draw = await store.getDrawById(drawId)
-
-    const users = await api.getUsersByIds(draw.totalUsers)
-    const triggererData = await api.getUser(draw.triggerer)
-
-    const options = utils.generateBasePayload(draw, users)
-    const response = {
-        update: {
-            message: `A new draw has been started by @${triggererData.username}`,
-            ...options
-        }
-    }
-    return response
-}
-
-// checks if the person interacting with draw is the person who triggered it
-// TODO: perform additional check as to whether user is a sysadmin
-checkIfTriggerer = async (drawId, userId, handleRejected) => {
-    const draw = await store.getDrawById(drawId)
-    if (draw.triggerer !== userId) {
-        handleRejected()
-    }
-    return
-}
 
 // initial point triggered by slash command
 app.get('/initialize', async (req, res) => {
@@ -222,5 +187,32 @@ app.post('/base_draw', async (req, res) => {
     const response = await getCurrentDrawStatus(drawId)
     res.send(response)
 })
+
+//  General function that prepares updated list of users
+getCurrentDrawStatus = async (drawId) => {
+    const draw = await store.getDrawById(drawId)
+
+    const users = await api.getUsersByIds(draw.totalUsers)
+    const triggererData = await api.getUser(draw.triggerer)
+
+    const options = utils.generateBasePayload(draw, users)
+    const response = {
+        update: {
+            message: `A new draw has been started by @${triggererData.username}`,
+            ...options
+        }
+    }
+    return response
+}
+
+// checks if the person interacting with draw is the person who triggered it
+// TODO: perform additional check as to whether user is a sysadmin
+checkIfTriggerer = async (drawId, userId, handleRejected) => {
+    const draw = await store.getDrawById(drawId)
+    if (draw.triggerer !== userId) {
+        handleRejected()
+    }
+    return
+}
 
 app.listen(port, () => logger.debug(`bot listening on port ${port}!`))
