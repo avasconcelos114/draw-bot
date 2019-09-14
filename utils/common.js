@@ -1,7 +1,6 @@
 const logger = require('./logger');
 const {CHATBOT_SERVER} = require('../constants');
 
-
 checkEnvVar = (variable) => {
     if (process.env[variable]) {
         return process.env[variable];
@@ -10,6 +9,7 @@ checkEnvVar = (variable) => {
     logger.error(`Error: the environment variable ${variable} has not been set!`)
     process.exit(1);
 }
+
 const chatbotUrl = checkEnvVar(CHATBOT_SERVER)
 
 // receives draw data, and full data of totalUsers and generates an ephemeral payload for Mattermost

@@ -1,5 +1,4 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 
 const api = require('./api');
 const store = require('./store');
@@ -11,8 +10,7 @@ const app = express();
 
 const port = utils.checkEnvVar(constants.PORT)
 
-app.use(bodyParser.json())
-app.use(bodyParser.urlencoded({ 'extended': 'true' }))
+app.use(express.json())
 
 /************************
  * General Stats API (more to be added)
@@ -32,63 +30,56 @@ app.get('/initialize', async (req, res) => {
     const reqData = req.query
     const reqOption = reqData.text 
     switch(reqOption) {
-        case 'stats':
-            const data = await store.getDraws()
-            await api.sendPostToChannel({
-                channel_id: reqData.channel_id,
-                message: `There have been ${data.length} draws so far! :tada:`,
-            })
-            res.send({})
-            return
-        case 'help':
-            res.send({
-                username: 'Draw bot',
-                response_type: 'ephemeral',
-                text: 'Run `/draw` to initiate a lottery draw!\n\nYou can also run `/draw stats` to view some basic statistics on this bot\'s usage'
-            })
-            return
-        // If command not recognized, initiate draw sequence
-        default:
-            const triggerer = req.query.user_id
+    case 'stats':
+        const data = await store.getDraws()
+        await api.sendPostToChannel({
+            channel_id: reqData.channel_id,
+            message: `There have been ${data.length} draws so far! :tada:`,
+        })
+        res.send()
+        break
+    case 'help':
+        res.send({
+            username: 'Draw bot',
+            response_type: 'ephemeral',
+            text: 'Run `/draw` to initiate a lottery draw!\n\nYou can also run `/draw stats` to view some basic statistics on this bot\'s usage'
+        })
+        break
+    // If command not recognized, initiate draw sequence
+    default:
+        const triggerer = req.query.user_id
 
-            // Getting total users that can be drawn (need to filter deactivated accounts based on delete_at date)
-            // Note: "member" means the members of a channel while "users" is loosely used as Mattermost users
-            const membersData = await api.getUsersFromChannel(reqData.channel_id)
-            const memberIds = []
-            membersData.forEach(member => {
-                memberIds.push(member.user_id)
-            })
-
-            const users = await api.getUsersByIds(memberIds)
-            const totalUsers = []
-            users.forEach(user => {
-                if (!user.delete_at) {
-                    totalUsers.push(user.id);
-                }
-            });
-
-            const triggererData = await api.getUser(triggerer)
-
-            // refuse to run drawbot for people in single-person channels
-            if (membersData.length <= 1) {
-                await api.sendPostToChannel({
-                    channel_id: reqData.channel_id,
-                    message: 'You can only use the draw bot in channels with at least 2 users!'
-                })
-                res.send({})
-                return
+        // Getting total users that can be drawn (need to filter deactivated accounts based on delete_at date)
+        const users = await api.getUsersFromChannel(reqData.channel_id)
+        const totalUsers = []
+        users.forEach(user => {
+            if (!user.delete_at) {
+                totalUsers.push(user.id);
             }
+        });
 
-            const draw = await store.createDraw({ totalUsers, triggerer })
+        const triggererData = await api.getUser(triggerer)
 
-            const options = utils.generateBasePayload(draw, users)
+        // refuse to run drawbot for people in single-person channels
+            if (totalUsers.length <= 1) {
             await api.sendPostToChannel({
                 channel_id: reqData.channel_id,
-                message: `A new draw has been started by @${triggererData.username}`,
-                ...options
+                message: 'You can only use the draw bot in channels with at least 2 users!'
             })
-            res.send({})  
+            res.send()
             return
+        }
+
+        const draw = await store.createDraw({ totalUsers, triggerer })
+
+        const options = utils.generateBasePayload(draw, users)
+        await api.sendPostToChannel({
+            channel_id: reqData.channel_id,
+            message: `A new draw has been started by @${triggererData.username}`,
+            ...options
+        })
+        res.send()  
+        break
     }
 })
 

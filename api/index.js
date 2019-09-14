@@ -8,7 +8,7 @@ const token = utils.checkEnvVar(constants.TOKEN)
 
 // Get user list from mattermost
 getUsersFromChannel = async (channelId) => {
-    const data = await doGet(`${mattermostUrl}/api/v4/channels/${channelId}/members`)
+    const data = await doGet(`${mattermostUrl}/api/v4/users?in_channel=${channelId}`)
     return data
 }
 
