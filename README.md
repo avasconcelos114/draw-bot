@@ -10,7 +10,7 @@ Things to note:
 ## Running on Docker
 0. Build Drawbot image
 ```
-docker build -t draw-bot
+docker build -t draw-bot .
 ```
 
 1. Run mongodb (from container)
